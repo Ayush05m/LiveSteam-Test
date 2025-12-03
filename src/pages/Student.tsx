@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BookOpen, MessageCircle, FileText } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const Student = () => {
   // In a real app, this URL comes from the backend API based on the active class
