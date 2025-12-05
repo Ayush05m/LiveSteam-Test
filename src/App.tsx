@@ -7,6 +7,8 @@ import Index from "./pages/Index";
 import Teacher from "./pages/Teacher";
 import Student from "./pages/Student";
 import NotFound from "./pages/NotFound";
+import TeacherDashboard from "./pages/TeacherDashboard";
+import StudentClassroom from "./pages/StudentClassroom";
 
 const queryClient = new QueryClient();
 

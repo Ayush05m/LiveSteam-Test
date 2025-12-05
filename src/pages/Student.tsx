@@ -1,16 +1,94 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import StreamPlayer from '@/components/StreamPlayer';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { BookOpen, MessageCircle, FileText } from "lucide-react";
+import { BookOpen, MessageCircle, FileText, Settings, Hand, WifiIcon, Wifi } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useSocket } from "@/hooks/useSocket";
+import { ChatPanel } from "@/components/ChatPanel";
+import { PollCard } from "@/components/PollCard";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const Student = () => {
-  // In a real app, this URL comes from the backend API based on the active class
-  // This is a test HLS stream that works for demo purposes
-  const streamUrl = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+  // Get stream key from URL parameter or use default
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlStreamKey = urlParams.get('key');
+
+  const [streamKey, setStreamKey] = useState(urlStreamKey || "class_main"); // Use URL param or default
+  const [codec, setCodec] = useState<'h264' | 'h265'>('h264');
+  const [isLive, setIsLive] = useState(false);
+  const [streamUrl, setStreamUrl] = useState("");
+  const [username] = useState(`Student_${Math.random().toString(36).substr(2, 5)}`);
+  const [handRaised, setHandRaised] = useState(false);
+  const [votedPolls, setVotedPolls] = useState<Set<string>>(new Set());
+  const [jumpToLiveCallback, setJumpToLiveCallback] = useState<(() => void) | null>(null);
+
+  // Socket.IO integration
+  const {
+    isConnected,
+    messages,
+    polls,
+    participantCount,
+    streamSettings,
+    sendMessage,
+    votePoll,
+    raiseHand,
+    lowerHand,
+    typingUsers,
+    setTyping,
+  } = useSocket({
+    url: 'http://localhost:3001',
+    streamKey,
+    username,
+    role: 'student',
+    autoConnect: !!streamKey
+  });
+
+  // Construct Stream URL based on codec
+  useEffect(() => {
+    setStreamUrl(`http://localhost:3001/streams/${streamKey}_${codec}.m3u8`);
+  }, [streamKey, codec]);
+
+  // Poll for stream status
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/api/streams');
+        const data = await response.json();
+        if (data.live && data.live[streamKey]) {
+          setIsLive(true);
+        } else {
+          setIsLive(false);
+        }
+      } catch (error) {
+        console.error("Error checking stream status:", error);
+        setIsLive(false);
+      }
+    };
+
+    const interval = setInterval(checkStatus, 3000);
+    checkStatus(); // Initial check
+    return () => clearInterval(interval);
+  }, [streamKey]);
+
+  const handleRaiseHand = () => {
+    if (handRaised) {
+      lowerHand();
+      setHandRaised(false);
+    } else {
+      raiseHand();
+      setHandRaised(true);
+    }
+  };
+
+  const handleVote = (pollId: string, optionId: string) => {
+    votePoll(pollId, optionId);
+    setVotedPolls(prev => new Set(prev).add(pollId));
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -26,13 +104,28 @@ const Student = () => {
             </div>
           </div>
           <div className="flex items-center gap-4">
-             <Badge variant="outline" className="border-green-500 text-green-600 bg-green-50">
-               Live Now
-             </Badge>
-             <Avatar className="w-8 h-8">
-               <AvatarImage src="https://github.com/shadcn.png" />
-               <AvatarFallback>ST</AvatarFallback>
-             </Avatar>
+            {isLive ? (
+              <Badge variant="outline" className="border-green-500 text-green-600 bg-green-50 animate-pulse">
+                Live Now
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-gray-300 text-gray-500 bg-gray-50">
+                Offline
+              </Badge>
+            )}
+            {isConnected ? (
+              <Badge variant="outline" className="border-green-500 text-green-600 bg-green-50">
+                <WifiIcon className="w-3 h-3 mr-1" /> Connected
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-gray-300 text-gray-500">
+                <WifiIcon className="w-3 h-3 mr-1" /> Disconnected
+              </Badge>
+            )}
+            <Avatar className="w-8 h-8">
+              <AvatarImage src="https://github.com/shadcn.png" />
+              <AvatarFallback>ST</AvatarFallback>
+            </Avatar>
           </div>
         </div>
       </header>
@@ -41,14 +134,115 @@ const Student = () => {
         <div className="lg:col-span-2 space-y-6">
           {/* Main Video Player */}
           <div className="space-y-2">
-            <StreamPlayer src={streamUrl} />
-            <div className="flex justify-between items-start px-1">
+            <div className="relative">
+              {isLive ? (
+                <>
+                  <StreamPlayer
+                    key={streamUrl}
+                    src={streamUrl}
+                    onJumpToLive={(callback) => setJumpToLiveCallback(() => callback)}
+                  />
+                  {/* Jump to Live Button - overlay on video */}
+                  <div className="absolute bottom-20 right-4">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => jumpToLiveCallback?.()}
+                      className="bg-red-600 hover:bg-red-700 text-white shadow-lg"
+                    >
+                      <Wifi className="w-4 h-4 mr-1" />
+                      Jump to Live
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="aspect-video bg-black rounded-lg flex items-center justify-center text-white">
+                  <div className="text-center">
+                    <p className="text-xl font-bold mb-2">Stream is Offline</p>
+                    <p className="text-sm text-gray-400">Waiting for teacher to start...</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between items-start px-1 mt-4">
               <div>
-                <h2 className="text-xl font-bold mt-2">Calculus II: Integration Techniques</h2>
-                <p className="text-sm text-gray-500">Started 15 mins ago</p>
+                <h2 className="text-xl font-bold">Calculus II: Integration Techniques</h2>
+                <p className="text-sm text-gray-500">{isLive ? "Live Streaming" : "Scheduled Class"} • {participantCount} viewers</p>
+                {/* Debug info - remove in production */}
+                <p className="text-xs text-gray-400 font-mono mt-1">Stream: {streamUrl}</p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Hand Raise Button */}
+                <Button
+                  variant={handRaised ? "default" : "outline"}
+                  size="sm"
+                  onClick={handleRaiseHand}
+                  className={handRaised ? "bg-orange-500 hover:bg-orange-600" : ""}
+                  disabled={!isLive}
+                >
+                  <Hand className="w-4 h-4 mr-1" />
+                  {handRaised ? "Lower Hand" : "Raise Hand"}
+                </Button>
+
+                {/* Codec Selector */}
+                <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
+                  <Settings className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm font-medium text-gray-700">Codec:</span>
+                  <Select value={codec} onValueChange={(v: any) => setCodec(v)}>
+                    <SelectTrigger className="w-[140px] h-8 text-xs">
+                      <SelectValue placeholder="Codec" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="h264">H.264 (Standard)</SelectItem>
+                      <SelectItem value="h265" disabled={!streamSettings.h265Enabled}>
+                        H.265 (High Eff)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
+
+            {codec === 'h265' && (
+              <Alert className="bg-blue-50 text-blue-800 border-blue-200 mt-2">
+                <AlertDescription className="text-xs">
+                  Using H.265 (HEVC) saves ~50% bandwidth. If video fails to play, switch back to H.264.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {!streamSettings.h265Enabled && (
+              <Alert className="bg-gray-50 text-gray-700 border-gray-200 mt-2">
+                <AlertDescription className="text-xs">
+                  H.265 encoding is currently disabled by the teacher.
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
+
+          {/* Polls Section */}
+          {polls.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Active Polls</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {polls.map(poll => (
+                    <PollCard
+                      key={poll.id}
+                      poll={poll}
+                      onVote={(optionId) => handleVote(poll.id, optionId)}
+                      userRole="student"
+                      hasVoted={votedPolls.has(poll.id)}
+                    />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -84,37 +278,16 @@ const Student = () => {
                   <TabsTrigger value="qa" className="flex-1">Q&A</TabsTrigger>
                 </TabsList>
               </div>
-              
+
               <TabsContent value="chat" className="flex-1 p-0 m-0 flex flex-col relative h-full">
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                   <div className="flex gap-2">
-                      <Avatar className="w-6 h-6"><AvatarFallback>JD</AvatarFallback></Avatar>
-                      <div>
-                        <p className="text-xs font-bold text-gray-700">Jane Doe <span className="text-gray-400 font-normal ml-1">10:02</span></p>
-                        <p className="text-sm text-gray-800">Can you explain the last step again?</p>
-                      </div>
-                   </div>
-                   <div className="flex gap-2">
-                      <Avatar className="w-6 h-6"><AvatarFallback>MS</AvatarFallback></Avatar>
-                      <div>
-                        <p className="text-xs font-bold text-gray-700">Mark Smith <span className="text-gray-400 font-normal ml-1">10:04</span></p>
-                        <p className="text-sm text-gray-800">The audio is very clear, thanks for the LL-HLS setup!</p>
-                      </div>
-                   </div>
-                   {/* Chat simulator placeholder */}
-                   <div className="text-center text-xs text-gray-400 py-4">
-                     Welcome to the chat room
-                   </div>
-                </div>
-                
-                <div className="p-4 border-t bg-white">
-                  <div className="flex gap-2">
-                    <input 
-                      className="flex-1 border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="Type a message..."
-                    />
-                    <Button size="icon"><MessageCircle className="w-4 h-4" /></Button>
-                  </div>
+                <div className="flex-1 overflow-hidden">
+                  <ChatPanel
+                    messages={messages}
+                    onSendMessage={sendMessage}
+                    participantCount={participantCount}
+                    typingUsers={typingUsers}
+                    currentUsername={username}
+                  />
                 </div>
               </TabsContent>
 
