@@ -76,7 +76,8 @@ export function useSocket({ url, streamKey, username, role, autoConnect = true }
 
     // Create socket connection
     const newSocket = io(url, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],  // Try polling first, it works!
+      upgrade: true,                          // Allow upgrade to websocket later
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5

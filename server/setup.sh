@@ -1,9 +1,11 @@
 #!/bin/bash
 # ==============================================================================
-# Local Development Setup Script
+# Streaming Server Setup Script
 # ==============================================================================
-# This script installs all required dependencies for local development.
-# For production/VM deployment, use setup_infra.sh instead.
+# This script installs all required dependencies including:
+# - FFmpeg (for transcoding)
+# - Nginx (for serving HLS streams)
+# - Node.js dependencies
 # ==============================================================================
 
 set -e
@@ -16,6 +18,10 @@ NC='\033[0m'
 log() { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
+
+# Get the directory where the script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MEDIA_DIR="$SCRIPT_DIR/media"
 
 # Detect OS
 detect_os() {
@@ -77,7 +83,6 @@ install_ffmpeg() {
             else
                 warn "Chocolatey/Winget not found. Please install FFmpeg manually."
                 warn "Download from: https://ffmpeg.org/download.html"
-                warn "Or install Chocolatey: https://chocolatey.org/install"
             fi
             ;;
         *)
@@ -95,13 +100,146 @@ install_ffmpeg() {
 }
 
 # ==============================================================================
+# Install Nginx
+# ==============================================================================
+install_nginx() {
+    log "Checking Nginx installation..."
+    
+    if command -v nginx &> /dev/null; then
+        NGINX_VERSION=$(nginx -v 2>&1)
+        log "Nginx is already installed: $NGINX_VERSION"
+    else
+        log "Installing Nginx..."
+        
+        case $OS in
+            linux)
+                if command -v apt-get &> /dev/null; then
+                    sudo apt-get update
+                    sudo apt-get install -y nginx
+                elif command -v yum &> /dev/null; then
+                    sudo yum install -y nginx
+                elif command -v dnf &> /dev/null; then
+                    sudo dnf install -y nginx
+                elif command -v pacman &> /dev/null; then
+                    sudo pacman -S --noconfirm nginx
+                else
+                    error "Could not detect package manager. Please install Nginx manually."
+                fi
+                ;;
+            macos)
+                if ! command -v brew &> /dev/null; then
+                    error "Homebrew is not installed. Please install it from https://brew.sh"
+                fi
+                brew install nginx
+                ;;
+            windows)
+                warn "Nginx installation on Windows requires manual setup."
+                warn "Download from: https://nginx.org/en/download.html"
+                return 0
+                ;;
+            *)
+                error "Unsupported OS. Please install Nginx manually."
+                ;;
+        esac
+        
+        log "Nginx installed successfully!"
+    fi
+}
+
+# ==============================================================================
+# Configure Nginx
+# ==============================================================================
+configure_nginx() {
+    log "Configuring Nginx for streaming..."
+    
+    if [[ "$OS" != "linux" ]]; then
+        warn "Nginx configuration is only automated for Linux. Please configure manually."
+        return 0
+    fi
+    
+    # Create nginx config for streaming
+    NGINX_CONFIG="/etc/nginx/sites-available/streaming"
+    
+    sudo tee $NGINX_CONFIG > /dev/null << EOF
+# Streaming Server Nginx Configuration
+server {
+    listen 80;
+    server_name _;
+
+    # HLS Stream Files
+    location /streams {
+        alias $MEDIA_DIR/streams;
+        
+        # MIME types for HLS
+        types {
+            application/vnd.apple.mpegurl m3u8;
+            video/mp2t ts;
+        }
+        
+        # Disable caching for live streams
+        add_header Cache-Control no-cache;
+        add_header Access-Control-Allow-Origin *;
+        add_header Access-Control-Allow-Methods 'GET, OPTIONS';
+        add_header Access-Control-Allow-Headers 'Origin, Content-Type, Accept';
+    }
+
+    # API and Socket.IO Proxy
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        
+        # WebSocket timeout
+        proxy_read_timeout 86400;
+    }
+
+    # Health check endpoint
+    location /health {
+        proxy_pass http://127.0.0.1:3001/health;
+    }
+}
+EOF
+
+    # Enable the site
+    if [ -d "/etc/nginx/sites-enabled" ]; then
+        sudo ln -sf $NGINX_CONFIG /etc/nginx/sites-enabled/streaming
+        # Disable default site if exists
+        sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+    fi
+    
+    # Test nginx configuration
+    if sudo nginx -t; then
+        log "Nginx configuration is valid!"
+        
+        # Restart nginx
+        sudo systemctl restart nginx
+        sudo systemctl enable nginx
+        log "Nginx restarted and enabled on boot."
+    else
+        error "Nginx configuration test failed. Please check the config."
+    fi
+}
+
+# ==============================================================================
 # Install Node.js Dependencies
 # ==============================================================================
 install_node_deps() {
     log "Installing Node.js dependencies..."
     
     if ! command -v node &> /dev/null; then
-        error "Node.js is not installed. Please install Node.js 18+ first."
+        warn "Node.js is not installed. Attempting to install..."
+        
+        if [[ "$OS" == "linux" ]] && command -v apt-get &> /dev/null; then
+            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+        else
+            error "Node.js is not installed. Please install Node.js 18+ first."
+        fi
     fi
     
     NODE_VERSION=$(node -v)
@@ -109,18 +247,19 @@ install_node_deps() {
     
     # Install server dependencies
     log "Installing server dependencies..."
+    cd "$SCRIPT_DIR"
     npm install
     
     # Install frontend dependencies (if running from project root)
-    if [ -f "../package.json" ]; then
+    if [ -f "$SCRIPT_DIR/../package.json" ]; then
         log "Installing frontend dependencies..."
-        cd ..
+        cd "$SCRIPT_DIR/.."
         if command -v pnpm &> /dev/null; then
             pnpm install
         else
             npm install
         fi
-        cd server
+        cd "$SCRIPT_DIR"
     fi
 }
 
@@ -130,12 +269,15 @@ install_node_deps() {
 create_directories() {
     log "Creating required directories..."
     
-    mkdir -p media/streams
-    mkdir -p media/recordings
+    mkdir -p "$MEDIA_DIR/streams"
+    mkdir -p "$MEDIA_DIR/recordings"
+    
+    # Set permissions for nginx to read
+    chmod -R 755 "$MEDIA_DIR"
     
     log "Directories created:"
-    log "  - media/streams   (HLS segments output)"
-    log "  - media/recordings (Stream recordings)"
+    log "  - $MEDIA_DIR/streams   (HLS segments output)"
+    log "  - $MEDIA_DIR/recordings (Stream recordings)"
 }
 
 # ==============================================================================
@@ -144,11 +286,11 @@ create_directories() {
 setup_env() {
     log "Setting up environment..."
     
-    if [ -f ".env" ]; then
+    if [ -f "$SCRIPT_DIR/.env" ]; then
         log ".env file already exists"
     else
         log "Creating .env file from template..."
-        cat > .env << 'EOF'
+        cat > "$SCRIPT_DIR/.env" << EOF
 # =============================================================================
 # Server Environment Configuration
 # =============================================================================
@@ -166,12 +308,12 @@ RTMP_PORT=1935
 ENABLE_GPU=false
 
 # Media Root Directory
-MEDIA_ROOT=./media
+MEDIA_ROOT=$MEDIA_DIR
 
 # Node Environment
-NODE_ENV=development
+NODE_ENV=production
 EOF
-        log ".env file created. Please update FFMPEG_PATH if needed."
+        log ".env file created."
     fi
 }
 
@@ -195,25 +337,48 @@ check_gpu() {
 }
 
 # ==============================================================================
+# Setup PM2 (Process Manager)
+# ==============================================================================
+setup_pm2() {
+    log "Setting up PM2 process manager..."
+    
+    if ! command -v pm2 &> /dev/null; then
+        log "Installing PM2..."
+        sudo npm install -g pm2
+    fi
+    
+    log "PM2 installed. You can start the server with: pm2 start index.js --name streaming-server"
+}
+
+# ==============================================================================
 # Main Setup
 # ==============================================================================
 main() {
     echo ""
     echo "=============================================="
-    echo "  Streaming Server - Local Development Setup"
+    echo "  Streaming Server - Full Setup"
     echo "=============================================="
     echo ""
     
     install_ffmpeg
     echo ""
     
+    install_nginx
+    echo ""
+    
     create_directories
+    echo ""
+    
+    configure_nginx
     echo ""
     
     setup_env
     echo ""
     
     install_node_deps
+    echo ""
+    
+    setup_pm2
     echo ""
     
     check_gpu
@@ -223,15 +388,20 @@ main() {
     echo "  Setup Complete!"
     echo "=============================================="
     echo ""
-    log "Next steps:"
-    log "  1. Update .env if needed (especially FFMPEG_PATH on Windows)"
-    log "  2. Start the server: npm start"
-    log "  3. Start the frontend: cd .. && npm run dev"
+    log "What was installed:"
+    log "  ✓ FFmpeg     - Video transcoding"
+    log "  ✓ Nginx      - Web server & reverse proxy"
+    log "  ✓ Node.js    - Application server"
+    log "  ✓ PM2        - Process manager"
     echo ""
-    log "Endpoints after starting:"
-    log "  API Server:  http://localhost:3001"
-    log "  RTMP Ingest: rtmp://localhost:1935/live/<key>"
-    log "  HLS Output:  http://localhost:3001/streams/<key>_h264.m3u8"
+    log "Next steps:"
+    log "  1. Start the server: pm2 start index.js --name streaming-server"
+    log "  2. Save PM2 config:  pm2 save && pm2 startup"
+    echo ""
+    log "Endpoints:"
+    log "  Web/API:     http://<your-ip>/"
+    log "  HLS Streams: http://<your-ip>/streams/<key>_h264.m3u8"
+    log "  RTMP Ingest: rtmp://<your-ip>:1935/live/<key>"
     echo ""
 }
 
