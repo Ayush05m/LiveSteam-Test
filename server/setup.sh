@@ -48,7 +48,7 @@ install_ffmpeg() {
     log "Installing FFmpeg..."
     
     case $OS in
-        # linux)
+        linux)
             if command -v apt-get &> /dev/null; then
                 sudo apt-get update
                 sudo apt-get install -y ffmpeg
@@ -63,24 +63,24 @@ install_ffmpeg() {
                 error "Could not detect package manager. Please install FFmpeg manually."
             fi
             ;;
-        # macos)
-        #     if ! command -v brew &> /dev/null; then
-        #         error "Homebrew is not installed. Please install it from https://brew.sh"
-        #     fi
-        #     brew install ffmpeg
-        #     ;;
-        # windows)
-            # if command -v choco &> /dev/null; then
-            #     choco install ffmpeg -y
-            # elif command -v winget &> /dev/null; then
-            #     winget install --id=Gyan.FFmpeg -e
-            # else
-            #     warn "Chocolatey/Winget not found. Please install FFmpeg manually."
-            #     warn "Download from: https://ffmpeg.org/download.html"
-            #     warn "Or install Chocolatey: https://chocolatey.org/install"
-            # fi
-            # ;;
-        # *)
+        macos)
+            if ! command -v brew &> /dev/null; then
+                error "Homebrew is not installed. Please install it from https://brew.sh"
+            fi
+            brew install ffmpeg
+            ;;
+        windows)
+            if command -v choco &> /dev/null; then
+                choco install ffmpeg -y
+            elif command -v winget &> /dev/null; then
+                winget install --id=Gyan.FFmpeg -e
+            else
+                warn "Chocolatey/Winget not found. Please install FFmpeg manually."
+                warn "Download from: https://ffmpeg.org/download.html"
+                warn "Or install Chocolatey: https://chocolatey.org/install"
+            fi
+            ;;
+        *)
             error "Unsupported OS. Please install FFmpeg manually."
             ;;
     esac
