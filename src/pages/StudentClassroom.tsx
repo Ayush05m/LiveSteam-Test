@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getStreamUrl } from "@/config/env";
 
 const StudentClassroom = () => {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -40,7 +41,7 @@ const StudentClassroom = () => {
             hlsInstance.destroy();
         }
 
-        const streamUrl = `http://localhost:3001/streams/${streamKey}_${codec}.m3u8`;
+        const streamUrl = getStreamUrl(streamKey, codec);
 
         if (Hls.isSupported()) {
             const hls = new Hls({

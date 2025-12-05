@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Copy, Video, Radio } from "lucide-react";
+import { getApiUrl } from "@/config/env";
 
 const TeacherDashboard = () => {
     const [streamKey, setStreamKey] = useState('');
@@ -22,7 +23,7 @@ const TeacherDashboard = () => {
         const checkStatus = async () => {
             try {
                 // Poll Node Media Server API
-                const response = await fetch('http://localhost:8000/api/streams');
+                const response = await fetch(getApiUrl('/api/streams'));
                 const data = await response.json();
                 // NMS API returns object with keys like "live" -> "streamKey" -> ...
                 // Structure: { live: { [streamKey]: { publisher: {...} } } }

@@ -12,6 +12,7 @@ import { useSocket } from "@/hooks/useSocket";
 import { ChatPanel } from "@/components/ChatPanel";
 import { PollCard } from "@/components/PollCard";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { config, getStreamUrl, getApiUrl } from "@/config/env";
 
 const Student = () => {
   // Get stream key from URL parameter or use default
@@ -41,7 +42,7 @@ const Student = () => {
     typingUsers,
     setTyping,
   } = useSocket({
-    url: 'http://localhost:3001',
+    url: config.socketUrl,
     streamKey,
     username,
     role: 'student',
@@ -50,14 +51,14 @@ const Student = () => {
 
   // Construct Stream URL based on codec
   useEffect(() => {
-    setStreamUrl(`http://localhost:3001/streams/${streamKey}_${codec}.m3u8`);
+    setStreamUrl(getStreamUrl(streamKey, codec));
   }, [streamKey, codec]);
 
   // Poll for stream status
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/streams');
+        const response = await fetch(getApiUrl('/api/streams'));
         const data = await response.json();
         if (data.live && data.live[streamKey]) {
           setIsLive(true);

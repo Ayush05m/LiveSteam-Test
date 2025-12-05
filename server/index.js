@@ -1,3 +1,6 @@
+// Load environment variables from .env file
+require('dotenv').config();
+
 const express = require('express');
 const NodeMediaServer = require('node-media-server');
 const path = require('path');

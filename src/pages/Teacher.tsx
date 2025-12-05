@@ -13,6 +13,7 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { PollCard } from "@/components/PollCard";
 import { CreatePollDialog } from "@/components/CreatePollDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { config, getApiUrl } from "@/config/env";
 
 const Teacher = () => {
   const [isStreaming, setIsStreaming] = useState(false);
@@ -39,7 +40,7 @@ const Teacher = () => {
     closePoll,
     updateStreamSettings,
   } = useSocket({
-    url: 'http://localhost:3001',
+    url: config.socketUrl,
     streamKey,
     username,
     role: 'teacher',
@@ -52,7 +53,7 @@ const Teacher = () => {
 
     const checkStatus = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/streams');
+        const response = await fetch(getApiUrl('/api/streams'));
         const data = await response.json();
         if (data.live && data.live[streamKey]) {
           if (!isStreaming) {
