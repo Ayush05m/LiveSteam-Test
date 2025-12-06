@@ -249,7 +249,7 @@ mkdir -p /var/log/nginx
 chown -R www-data:www-data /opt/media
 chmod -R 755 /opt/media
 
-log "Creating Nginx RTMP configuration..."
+log "Creating Nginx configuration (HTTP/HTTPS only - Node Media Server handles RTMP)..."
 cat > /etc/nginx/nginx.conf << 'NGINX_CONF'
 user www-data;
 worker_processes auto;
@@ -265,37 +265,9 @@ events {
 }
 
 # ==============================
-# RTMP CONFIGURATION
+# NOTE: RTMP is handled by Node Media Server on port 1935
+# Nginx only handles HTTP/HTTPS traffic
 # ==============================
-rtmp {
-    server {
-        listen 1935;
-        chunk_size 4096;
-        
-        # Ping for connection health
-        ping 30s;
-        ping_timeout 15s;
-        
-        # Main live application
-        application live {
-            live on;
-            
-            # Allow publishing from anywhere
-            allow publish all;
-            allow play all;
-        }
-        
-        # HLS application
-        application hls {
-            live on;
-            hls on;
-            hls_path /opt/media/streams;
-            hls_fragment 2s;
-            hls_playlist_length 10s;
-            hls_cleanup on;
-        }
-    }
-}
 
 # ==============================
 # HTTP CONFIGURATION
@@ -395,6 +367,41 @@ http {
         }
         
         # ==============================
+        # SOCKET.IO WITH CORS
+        # ==============================
+        location /socket.io/ {
+            proxy_pass http://127.0.0.1:3001/socket.io/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # CORS headers for Socket.IO
+            add_header Access-Control-Allow-Origin "https://live-steam-test.vercel.app" always;
+            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept" always;
+            add_header Access-Control-Allow-Credentials "true" always;
+            
+            # Handle preflight
+            if ($request_method = 'OPTIONS') {
+                add_header Access-Control-Allow-Origin "https://live-steam-test.vercel.app";
+                add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
+                add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept";
+                add_header Access-Control-Allow-Credentials "true";
+                add_header Content-Length 0;
+                add_header Content-Type text/plain;
+                return 204;
+            }
+            
+            # WebSocket timeouts
+            proxy_read_timeout 86400;
+            proxy_send_timeout 86400;
+        }
+        
+        # ==============================
         # API PROXY (Node Media Server)
         # ==============================
         location / {
@@ -407,6 +414,12 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_cache_bypass $http_upgrade;
+            
+            # CORS headers
+            add_header Access-Control-Allow-Origin "https://live-steam-test.vercel.app" always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization" always;
+            add_header Access-Control-Allow-Credentials "true" always;
             
             # WebSocket support
             proxy_read_timeout 86400;
