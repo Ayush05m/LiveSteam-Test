@@ -367,8 +367,9 @@ http {
         }
         
         # ==============================
-        # SOCKET.IO WITH CORS
+        # SOCKET.IO PROXY
         # ==============================
+        # NOTE: CORS is handled by Node.js cors() middleware
         location /socket.io/ {
             proxy_pass http://127.0.0.1:3001/socket.io/;
             proxy_http_version 1.1;
@@ -379,23 +380,6 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             
-            # CORS headers for Socket.IO
-            add_header Access-Control-Allow-Origin "https://live-steam-test.vercel.app" always;
-            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
-            add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept" always;
-            add_header Access-Control-Allow-Credentials "true" always;
-            
-            # Handle preflight
-            if ($request_method = 'OPTIONS') {
-                add_header Access-Control-Allow-Origin "https://live-steam-test.vercel.app";
-                add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
-                add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept";
-                add_header Access-Control-Allow-Credentials "true";
-                add_header Content-Length 0;
-                add_header Content-Type text/plain;
-                return 204;
-            }
-            
             # WebSocket timeouts
             proxy_read_timeout 86400;
             proxy_send_timeout 86400;
@@ -404,6 +388,7 @@ http {
         # ==============================
         # API PROXY (Node Media Server)
         # ==============================
+        # NOTE: CORS is handled by Node.js cors() middleware
         location / {
             proxy_pass http://127.0.0.1:3001;
             proxy_http_version 1.1;
@@ -414,12 +399,6 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_cache_bypass $http_upgrade;
-            
-            # CORS headers
-            add_header Access-Control-Allow-Origin "https://live-steam-test.vercel.app" always;
-            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
-            add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization" always;
-            add_header Access-Control-Allow-Credentials "true" always;
             
             # WebSocket support
             proxy_read_timeout 86400;
