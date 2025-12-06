@@ -346,7 +346,7 @@ http {
         
         # Playlists (.m3u8) - NEVER CACHE
         location ~ ^/streams/(.+\.m3u8)$ {
-            alias /opt/media/streams/$1;
+            alias /opt/streaming-server/media/streams/$1;
             types {
                 application/vnd.apple.mpegurl m3u8;
             }
@@ -358,7 +358,7 @@ http {
         
         # Segments (.ts) - CACHE FOREVER
         location ~ ^/streams/(.+\.ts)$ {
-            alias /opt/media/streams/$1;
+            alias /opt/streaming-server/media/streams/$1;
             types {
                 video/mp2t ts;
             }
