@@ -1,7 +1,8 @@
-const { spawn } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const CONFIG = require('./config');
+import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import CONFIG from './config.js';
 
 /**
  * VOD Encoder - Re-encodes recorded FLV to multiple HLS renditions for VOD
@@ -12,7 +13,7 @@ const CONFIG = require('./config');
  * This creates a complete adaptive bitrate HLS package from the recording.
  */
 
-const VOD_RENDITIONS = [
+export const VOD_RENDITIONS = [
     { name: '1080p', width: 1920, height: 1080, bitrate: '5000k', audioBitrate: '192k' },
     { name: '720p', width: 1280, height: 720, bitrate: '2500k', audioBitrate: '128k' },
     { name: '480p', width: 854, height: 480, bitrate: '1500k', audioBitrate: '96k' },
@@ -45,7 +46,7 @@ function createMasterPlaylist(outputDir, baseName, renditions) {
  * @param {boolean} useGpu - Whether to use GPU encoding
  * @returns {Promise<string>} - Path to master playlist
  */
-function encodeToVOD(inputPath, outputDir, useGpu = false) {
+export function encodeToVOD(inputPath, outputDir, useGpu = false) {
     return new Promise((resolve, reject) => {
         if (!fs.existsSync(inputPath)) {
             return reject(new Error(`Input file not found: ${inputPath}`));
@@ -146,7 +147,7 @@ function encodeToVOD(inputPath, outputDir, useGpu = false) {
 /**
  * Process all pending recordings in a directory
  */
-async function processAllRecordings(recordingDir, vodDir, useGpu = false) {
+export async function processAllRecordings(recordingDir, vodDir, useGpu = false) {
     const files = fs.readdirSync(recordingDir).filter(f => f.endsWith('.flv'));
 
     console.log(`[VOD] Found ${files.length} recordings to process`);
@@ -170,8 +171,8 @@ async function processAllRecordings(recordingDir, vodDir, useGpu = false) {
     }
 }
 
-// CLI mode
-if (require.main === module) {
+// CLI mode check for ESM
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const args = process.argv.slice(2);
 
     if (args.length === 0) {
@@ -194,9 +195,3 @@ if (require.main === module) {
             .catch(err => console.error('[VOD] Error:', err));
     }
 }
-
-module.exports = {
-    encodeToVOD,
-    processAllRecordings,
-    VOD_RENDITIONS
-};

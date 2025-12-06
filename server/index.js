@@ -1,18 +1,20 @@
 // Load environment variables from .env file
-require('dotenv').config();
+import dotenv from 'dotenv';
+dotenv.config();
 
-const express = require('express');
-const NodeMediaServer = require('node-media-server');
-const path = require('path');
-const fs = require('fs');
-const cors = require('cors');
-const http = require('http');
-const { Server } = require('socket.io');
-const { v4: uuidv4 } = require('uuid');
+import express from 'express';
+// node-media-server may not have ESM default export, try default or *
+import NodeMediaServer from 'node-media-server';
+import path from 'path';
+import fs from 'fs';
+import cors from 'cors';
+import http from 'http';
+import { Server } from 'socket.io';
+import { v4 as uuidv4 } from 'uuid';
 
-const CONFIG = require('./config');
-const { startTranscoding, stopTranscoding, getRecordingPath } = require('./transcoder');
-const { encodeToVOD } = require('./vod_encoder');
+import CONFIG from './config.js';
+import { startTranscoding, stopTranscoding, getRecordingPath } from './transcoder.js';
+import { encodeToVOD } from './vod_encoder.js';
 
 // Ensure directories exist
 if (!fs.existsSync(CONFIG.outputDir)) fs.mkdirSync(CONFIG.outputDir, { recursive: true });

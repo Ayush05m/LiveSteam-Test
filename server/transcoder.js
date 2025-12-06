@@ -1,7 +1,7 @@
-const { spawn } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const CONFIG = require('./config');
+import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import CONFIG from './config.js';
 
 // Track active FFmpeg processes
 const activeProcesses = new Map();
@@ -122,7 +122,7 @@ function buildFFmpegArgs(inputUrl, streamKey, useGpu, enableH265) {
 /**
  * Starts FFmpeg transcoding process
  */
-function startTranscoding(streamKey, enableH265 = false) {
+export function startTranscoding(streamKey, enableH265 = false) {
     const inputUrl = `rtmp://127.0.0.1:${CONFIG.rtmp.port}/live/${streamKey}`;
     const useGpu = CONFIG.transcode.gpuEnabled;
 
@@ -184,7 +184,7 @@ function startTranscoding(streamKey, enableH265 = false) {
 /**
  * Stops FFmpeg transcoding process
  */
-function stopTranscoding(streamKey) {
+export function stopTranscoding(streamKey) {
     const entry = activeProcesses.get(streamKey);
 
     if (entry) {
@@ -211,13 +211,7 @@ function stopTranscoding(streamKey) {
 /**
  * Get recording path for a stream
  */
-function getRecordingPath(streamKey) {
+export function getRecordingPath(streamKey) {
     const entry = activeProcesses.get(streamKey);
     return entry ? entry.recordingPath : null;
 }
-
-module.exports = {
-    startTranscoding,
-    stopTranscoding,
-    getRecordingPath
-};

@@ -1,4 +1,4 @@
-const path = require('path');
+import path from 'path';
 
 // Base directories
 const MEDIA_ROOT = process.env.MEDIA_ROOT || './media';
@@ -55,4 +55,4 @@ const CONFIG = {
     }
 };
 
-module.exports = CONFIG;
+export default CONFIG;
