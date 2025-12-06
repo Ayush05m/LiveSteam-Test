@@ -256,13 +256,12 @@ worker_processes auto;
 pid /run/nginx.pid;
 error_log /var/log/nginx/error.log;
 
-# Load RTMP module if available
+# Load modules
 include /etc/nginx/modules-enabled/*.conf;
 
 events {
     worker_connections 2048;
     multi_accept on;
-    use epoll;
 }
 
 # ==============================
@@ -281,28 +280,12 @@ rtmp {
         application live {
             live on;
             
-            # Allow publishing from anywhere (secure with firewall/auth if needed)
+            # Allow publishing from anywhere
             allow publish all;
             allow play all;
-            
-            # Record streams (optional - comment out if Node Media Server handles this)
-            # record all;
-            # record_path /opt/media/recordings;
-            # record_suffix -%Y%m%d-%H%M%S.flv;
-            
-            # HLS output (optional - comment out if Node Media Server handles transcoding)
-            # hls on;
-            # hls_path /opt/media/streams;
-            # hls_fragment 2s;
-            # hls_playlist_length 10s;
-            # hls_cleanup on;
-            
-            # Push to Node Media Server for transcoding
-            # Uncomment below if you want nginx to receive RTMP and forward
-            # push rtmp://localhost:1936/live;
         }
         
-        # Direct HLS application (if using nginx for HLS instead of Node)
+        # HLS application
         application hls {
             live on;
             hls on;
@@ -310,11 +293,6 @@ rtmp {
             hls_fragment 2s;
             hls_playlist_length 10s;
             hls_cleanup on;
-            
-            # Optional: create multiple quality versions
-            # hls_variant _low bandwidth=288000;
-            # hls_variant _mid bandwidth=448000;
-            # hls_variant _high bandwidth=1152000;
         }
     }
 }
@@ -370,17 +348,18 @@ http {
     
     # HTTPS Server
     server {
-        listen 443 ssl http2;
-        listen [::]:443 ssl http2;
+        listen 443 ssl;
+        listen [::]:443 ssl;
+        http2 on;
         server_name livestream-test.duckdns.org;
         
-        # SSL Certificates (will be created by certbot)
+        # SSL Certificates
         ssl_certificate /etc/letsencrypt/live/livestream-test.duckdns.org/fullchain.pem;
         ssl_certificate_key /etc/letsencrypt/live/livestream-test.duckdns.org/privkey.pem;
         
         # Strong SSL settings
         ssl_protocols TLSv1.2 TLSv1.3;
-        ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+        ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
         ssl_prefer_server_ciphers off;
         
         # Security headers
@@ -413,16 +392,6 @@ http {
             }
             add_header Cache-Control "public, max-age=31536000, immutable";
             add_header Access-Control-Allow-Origin * always;
-        }
-        
-        # RTMP statistics (optional)
-        location /stat {
-            rtmp_stat all;
-            rtmp_stat_stylesheet stat.xsl;
-        }
-        
-        location /stat.xsl {
-            root /usr/share/nginx/html;
         }
         
         # ==============================
