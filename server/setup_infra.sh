@@ -208,10 +208,6 @@ http {
         ssl_ciphers HIGH:!aNULL:!MD5;
         ssl_prefer_server_ciphers on;
 
-        # Cross-Origin Resource Sharing
-        add_header Access-Control-Allow-Origin *;
-        add_header Access-Control-Allow-Methods 'GET, POST, OPTIONS';
-
         # ----------------------------------------------------------------------
         # HLS STREAMING CONFIGURATION
         # ----------------------------------------------------------------------
