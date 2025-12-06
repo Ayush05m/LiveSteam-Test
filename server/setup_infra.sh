@@ -119,9 +119,28 @@ fi
 # 4. Project Directory Structure
 # ==============================================================================
 PROJECT_DIR="/opt/streaming-server"
+# Save the directory where the script is running from
+SCRIPT_SRC_DIR=$(pwd)
 
 log "Setting up project directory: $PROJECT_DIR"
 mkdir -p "$PROJECT_DIR"/{config,media/streams,media/recordings,logs}
+
+# ==============================================================================
+# 4b. Copy Application Code
+# ==============================================================================
+log "Copying application files from $SCRIPT_SRC_DIR..."
+
+# List of files to copy
+FILES_TO_COPY=("index.js" "config.js" "transcoder.js" "vod_encoder.js" "package.json" ".env" "start_server.sh")
+
+for file in "${FILES_TO_COPY[@]}"; do
+    if [ -f "$SCRIPT_SRC_DIR/$file" ]; then
+        cp "$SCRIPT_SRC_DIR/$file" "$PROJECT_DIR/"
+        log "Copied: $file"
+    else
+        warn "File not found (skipped): $file"
+    fi
+done
 
 # Navigate to project dir
 cd "$PROJECT_DIR"
@@ -353,10 +372,9 @@ log " 1. Copy your application Source Code to: $PROJECT_DIR"
 log "    (index.js, config.js, transcoder.js, package.json, etc.)"
 log ""
 log " 2. Start the server:"
-log "    ./start_server.sh   (OR  cd $PROJECT_DIR && ./start_server.sh)"
+log "    ./start_server.sh"
 log ""
 log " 3. Check logs:"
-log "    cd $PROJECT_DIR && docker compose logs -f"
+log "    docker compose logs -f"
 log "=========================================================="
 
-chmod +x setup_infra.sh
