@@ -45,8 +45,14 @@ apt-get install -y \
     build-essential \
     net-tools \
     ca-certificates \
-    gnupg \
-    lsb-release
+    certbot \
+    python3-certbot-nginx
+
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
+DOMAIN="livestream-test.duckdns.org"
+EMAIL="ayush05m@gmail.com" # Change this if needed
 
 # ==============================================================================
 # 2. Install Docker & Docker Compose
@@ -72,6 +78,25 @@ systemctl enable docker
 systemctl start docker
 
 # ==============================================================================
+# 2b. Obtain SSL Certificate (Let's Encrypt)
+# ==============================================================================
+log "Checking SSL Certificates for $DOMAIN..."
+
+# Stop any process binding port 80 (like existing nginx) to allow standalone certbot
+if docker ps | grep -q 'streaming-nginx'; then
+    log "Stopping existing Nginx container to free port 80..."
+    docker stop streaming-nginx || true
+fi
+
+if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+    log "Obtaining new SSL certificate..."
+    certbot certonly --standalone -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" --expand
+else
+    log "SSL Certificate already exists. Attempting renewal..."
+    certbot renew
+fi
+
+# ==============================================================================
 # 3. GPU Detection & Driver Installation
 # ==============================================================================
 HAS_GPU=false
@@ -94,8 +119,6 @@ if lspci | grep -i nvidia > /dev/null; then
         apt-get update
         
         # Install Drivers (Common version 535) and Toolkit
-        # Note: In some cloud providers (like GCP), proprietary drivers might be pre-available or require specific headers.
-        # This generic install works for most Ubuntu instances.
         apt-get install -y nvidia-driver-535 nvidia-container-toolkit
         
         # Configure Docker to use NVIDIA runtime
@@ -146,10 +169,10 @@ done
 cd "$PROJECT_DIR"
 
 # ==============================================================================
-# 5. Generate Nginx Config (Optimized for CDN)
+# 5. Generate Nginx Config (SSL + CDN Optimized)
 # ==============================================================================
 log "Generating Nginx Configuration..."
-cat > config/nginx.conf << 'EOF'
+cat > config/nginx.conf << EOF
 worker_processes auto;
 events { worker_connections 1024; }
 
@@ -164,9 +187,26 @@ http {
     keepalive_timeout 65;
     types_hash_max_size 2048;
 
+    # Redirect HTTP to HTTPS
     server {
         listen 80;
-        server_name _;
+        server_name $DOMAIN;
+        return 301 https://\$host\$request_uri;
+    }
+
+    # HTTPS Server
+    server {
+        listen 443 ssl http2;
+        server_name $DOMAIN;
+
+        # SSL Certificates
+        ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+        
+        # SSL Optimization
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers on;
 
         # Cross-Origin Resource Sharing
         add_header Access-Control-Allow-Origin *;
@@ -177,9 +217,8 @@ http {
         # ----------------------------------------------------------------------
         
         # 1. Playlists (.m3u8) - NEVER CACHE
-        # These change constantly during live streams.
         location ~ ^/streams/(.+\.m3u8)$ {
-            alias /opt/media/streams/$1;
+            alias /opt/media/streams/\$1;
             types {
                 application/vnd.apple.mpegurl m3u8;
             }
@@ -187,14 +226,12 @@ http {
             add_header Access-Control-Allow-Origin *;
         }
 
-        # 2. Segments (.ts) - CACHE FOREVER
-        # These are immutable once written. CDN should cache these aggressively.
+        # 2. Segments (.ts) - CACHE FOREVER (1 Year)
         location ~ ^/streams/(.+\.ts)$ {
-            alias /opt/media/streams/$1;
+            alias /opt/media/streams/\$1;
             types {
                 video/mp2t ts;
             }
-            # Cache for 1 year (immutable)
             add_header Cache-Control "public, max-age=31536000, immutable";
             add_header Access-Control-Allow-Origin *;
         }
@@ -205,11 +242,12 @@ http {
         location / {
             proxy_pass http://app:3001;
             proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
         }
     }
 }
@@ -220,7 +258,7 @@ EOF
 # ==============================================================================
 log "Generating Application Dockerfile..."
 
-# Base image Logic
+# Base image Logic WITH NODEJS for GPU build too
 if [ "$HAS_GPU" = true ]; then
     BASE_IMAGE="nvidia/cuda:12.2.0-base-ubuntu22.04"
     GPU_FLAG="true"
@@ -241,7 +279,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y ffmpeg curl \\
     && rm -rf /var/lib/apt/lists/*
 
-# If using CUDA base, we need to install Node.js manually
+# If using CUDA base, install Node.js manually
 RUN if [ "${GPU_FLAG}" = "true" ]; then \\
       curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \\
       && apt-get install -y nodejs; \\
@@ -269,7 +307,7 @@ EOF
 log "Generating docker-compose.yml..."
 
 if [ "$HAS_GPU" = true ]; then
-cat > docker-compose.yml << 'EOF'
+cat > docker-compose.yml << EOF
 version: '3.8'
 services:
   app:
@@ -297,14 +335,16 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./media:/opt/media:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - app
 EOF
 else
-cat > docker-compose.yml << 'EOF'
+cat > docker-compose.yml << EOF
 version: '3.8'
 services:
   app:
@@ -325,19 +365,21 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./media:/opt/media:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - app
 EOF
 fi
 
 # ==============================================================================
-# 8. Rclone Setup (Optional but recommended)
+# 8. Rclone Setup (Optional)
 # ==============================================================================
 if ! command -v rclone &> /dev/null; then
-    log "Installing Rclone (for caching/backup)..."
+    log "Installing Rclone..."
     curl https://rclone.org/install.sh | bash
 fi
 
@@ -363,18 +405,15 @@ chmod +x start_server.sh
 # ==============================================================================
 log ""
 log "=========================================================="
-log " SETUP COMPLETE!"
+log " SETUP COMPLETE! SSL ENABLED for $DOMAIN"
 log "=========================================================="
 log " Installation Directory: $PROJECT_DIR"
 log ""
 log " ACTION REQUIRED:"
-log " 1. Copy your application Source Code to: $PROJECT_DIR"
-log "    (index.js, config.js, transcoder.js, package.json, etc.)"
-log ""
-log " 2. Start the server:"
+log " 1. Start the server:"
 log "    ./start_server.sh"
 log ""
-log " 3. Check logs:"
+log " 2. Check logs:"
 log "    docker compose logs -f"
 log "=========================================================="
 
