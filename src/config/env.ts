@@ -9,7 +9,7 @@ export const config = {
   socketUrl: import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001',
   
   // Stream URL base path - where HLS streams are served
-  streamUrl: import.meta.env.VITE_STREAM_URL || 'http://localhost:3001/streams',
+  streamUrl: import.meta.env.VITE_STREAM_URL || 'https://matsci-stream.b-cdn.net/streams',
 };
 
 // Helper to build stream URLs
